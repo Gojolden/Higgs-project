@@ -1,0 +1,308 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+# %%
+
+# Task 1 Start ---------------------------------------------------------------
+
+np.random.seed(1)
+
+N_b = 10e5  # Number of background events, used in generation and in fit.
+b_tau = 30.  # Spoiler.
+
+
+def generate_signal(N, mu, sig):
+    '''
+    Generate N values according to a gaussian distribution.
+    '''
+    return np.random.normal(loc=0, scale=1, size=400).tolist()
+
+
+# %%
+
+def generate_background(N, tau):
+    '''
+    Generate N values according to an exp distribution.
+    '''
+
+    return np.random.exponential(scale=tau, size=int(N)).tolist()
+
+
+def generate_data(n_signals=400):
+    '''
+    Generate a set of values for signal and background. Input arguement sets
+    the number of signal events, and can be varied (default to higgs-like at
+    announcement).
+
+    The background amplitude is fixed to 9e5 events, and is modelled as an
+    exponential, hard coded width. The signal is modelled as a gaussian on top
+    (again, hard coded width and mu).
+    '''
+    vals = []
+    vals += generate_signal(n_signals, 125., 1.5)
+    vals += generate_background(N_b, b_tau)
+
+    return vals
+
+
+vals = generate_data()
+
+# Make a histogram.
+bin_heights, bin_edges, patches = plt.hist(vals, range=[104, 155], bins=30)
+params = {
+   'axes.labelsize': 8,
+   'font.size': 8,
+   'legend.fontsize': 8,
+   'xtick.labelsize': 8,
+   'ytick.labelsize': 8,
+   'figure.figsize': [5, 8.09]  # using golden ratio
+   }
+bins_c1 = plt.hist(vals, range=[50, 200], bins=30, color='red',
+                   label='50-200')
+
+bins_main = plt.hist(vals, range=[104, 155], bins=30, color='green',
+                     label='104-155')
+
+bins_c2 = plt.hist(vals, range=[120, 150], bins=30, color='blue',
+                   label='120-150')
+bincentres = 0.5 * (bins_main[1][1:] + bins_main[1][:-1])
+# calculate the bin centres (i.e. x position of the error bars)
+print('x coordinates of bincentres are', bincentres)
+print('y coordinates of bincentres are', bin_heights)
+# %%
+
+params = {
+   'axes.labelsize': 8,
+   'font.size': 8,
+   'legend.fontsize': 8,
+   'xtick.labelsize': 8,
+   'ytick.labelsize': 8,
+   'figure.figsize': [5, 8.09]  # using golden ratio
+   }
+plt.errorbar(bincentres, bins_c1[0], yerr=np.sqrt(bins_c1[0]), color='red',
+             fmt='o', mew=2, ms=3, capsize=4)  # plot the error bars.
+
+plt.errorbar(bincentres, bins_main[0], yerr=np.sqrt(bins_main[0]),
+             color='green', fmt='o', mew=2, ms=3, capsize=4)
+# plot the error bars.
+
+plt.errorbar(bincentres, bins_c2[0], yerr=np.sqrt(bins_c2[0]), color='blue',
+             fmt='o', mew=2, ms=3, capsize=4)  # plot the error bars.
+
+plt.xlabel(r'$m_{\gamma\gamma}$ (GeV)', loc='right')
+plt.ylabel("Number of entries")
+plt.legend(['Data points - range: 50-200', 'Data points - range: 104-155',
+            'Data points - range: 120-150'], loc='upper right', fontsize=12,
+           frameon=False)
+plt.xticks(fontsize=12)
+plt.yticks(fontsize=12)
+plt.tight_layout()
+plt.show()
+# bin_heights and bin_edges are numpy arrays.
+# patches are the matplotlib bar objects, which we won’t need.
+# For larger bin sizes, signal disappears
+# %%
+x_bins = [104.85, 106.55, 108.25, 109.95, 111.65, 113.35, 115.05, 116.75,
+          118.45, 120.15, 121.85, 123.55, 125.25, 126.95, 128.65, 130.35,
+          132.05, 133.75, 135.45, 137.15, 138.85, 140.55, 142.25, 143.95,
+          145.65, 147.35, 149.05, 150.75, 152.45, 154.15]
+
+y_bins = [1795., 1638., 1548., 1418., 1410., 1316., 1312., 1120., 1127., 1036.,
+          974.,  992., 892.,  770.,  789.,  713.,  673.,  640.,  590.,  562.,
+          551.,  537.,  502.,  430., 429.,  384.,  428.,  387.,  357.,  353.]
+# %%
+plt.errorbar(x_bins, y_bins, yerr=np.sqrt(y_bins),
+             xerr=1, color='black',
+             fmt='.', mew=3, ms=5, capsize=1)  # plot the error bars.
+plt.xlabel(r'$m_{\gamma\gamma}$ (GeV)', loc='right')
+plt.ylabel("Number of entries")
+plt.legend(['Data points',], loc='upper right', fontsize=12, frameon=False)
+plt.xticks(fontsize=12)
+plt.yticks(fontsize=12)
+plt.tight_layout()
+plt.show()
+# Task 1 end -----------------------------------------------------------------
+
+# %%
+
+# Task 2 start ---------------------------------------------------------------
+# importing functions
+# The function is defined to generate background expectation values
+
+
+def get_B_expectation(xs, A, lamb):
+    '''
+    Return a set of expectation values for the background distribution for the
+    passed in x values.
+    '''
+    return [A*np.exp(-x/lamb) for x in xs]
+
+
+def signal_gaus(x, mu, sig, signal_amp):
+    return signal_amp/(np.sqrt(2.*np.pi)*sig)*np.exp(-np.power((x - mu)/sig,
+                                                               2.)/2)
+
+# Function generates background plus signal values
+
+
+def get_SB_expectation(xs, A, lamb, mu, sig, signal_amp):
+    ys = []
+    for x in xs:
+        ys.append(A*np.exp(-x/lamb) + signal_gaus(x, mu, sig, signal_amp))
+    return ys
+# %%
+# Removing values corresponding to signal so that our parameterization includes
+# only the background to get accurate values for lambda and A.
+# creating a boolean mask
+
+
+B_vals = np.array(generate_background(N_b, b_tau))
+B_vals_nosig = B_vals[(B_vals < 120) | (B_vals > 130)]
+
+# doing maximum likelihood method on paper, find λ_hat = mean of values not
+# including signal vals
+λ_hat_MLE = np.mean(B_vals_nosig)
+
+# integrating PDF (Ae^(-x/λ)) between 104 and 155 and setting equal to N to
+# find A.
+# vals_in_range = B_vals_nosig[(B_vals_nosig < 104) | (B_vals_nosig > 155)].
+# Range achieved through trial and error to scale try and scale closest to the
+# observed distribution.
+vals_in_range = [P for P in B_vals_nosig if 89 <= P <= 186]
+N = len(vals_in_range)
+
+
+A_MLE = N/(λ_hat_MLE * (np.exp(-104/λ_hat_MLE) - np.exp(-155/λ_hat_MLE)))
+
+# Calculating the uncertainty on the MLE of λ
+sig_λ_hat_MLE = λ_hat_MLE/np.sqrt(N)
+
+print('The MLE of λ is', λ_hat_MLE)
+print('The corresponding A value is', A_MLE)
+print('The uncertainty on the MLE of λ is', sig_λ_hat_MLE)
+# %%
+
+# Fitting the background + signal to data, red line should have a 'bump'
+# around 125, if not, change initial guesses.
+
+initial_guess = [A_MLE, λ_hat_MLE, 125, 1.5, 50]
+po, po_cov = curve_fit(get_SB_expectation, x_bins, y_bins, initial_guess,
+                       sig_λ_hat_MLE, maxfev=500)
+
+# print("The parameters")
+# print(po)
+# print('The covariance matrix')
+# print(po_cov)
+
+print("The signal parameters are")
+print(f" A = {po[0]:.1f} +/- {np.sqrt(po_cov[0, 0]):.1f}")
+print(f" lamb = {po[1]:.1f} +/- {np.sqrt(po_cov[1,1]):.1f}")
+print(f" mu = {po[2]:.1f} +/- {np.sqrt(po_cov[2, 2]):.1f}")
+print("and the background estimate is")
+print(f" sig = {po[3]:.2f} +/- {np.sqrt(po_cov[3, 3]):.2f}")
+print(f" signal_amp = {po[4]:.0f} +/- {np.sqrt(po_cov[4, 4]):.0f}")
+
+
+plt.errorbar(x_bins, y_bins, yerr=np.sqrt(y_bins), xerr=1, color='black',
+             fmt='o', mew=3, ms=3, capsize=1)  # plot the error bars.
+plt.plot(x_bins, get_SB_expectation(x_bins, po[0], po[1], po[2], po[3], po[4]),
+         label='Fit results', color='r')
+plt.xlabel(r'$m_{\gamma\gamma}$ (GeV)', loc='right')
+plt.ylabel("Number of entries")
+plt.legend(['B+S fit', 'Data points'], loc='upper right', fontsize=12,
+           frameon=False)
+plt.tight_layout()
+plt.show()
+# %%
+
+# plotting the background
+expected_MLE = get_B_expectation(x_bins, A_MLE, λ_hat_MLE)
+plt.plot(x_bins, get_SB_expectation(x_bins, po[0], po[1], po[2], po[3], po[4]),
+         label='Fit results', color='r')
+plt.errorbar(x_bins, y_bins, yerr=np.sqrt(y_bins), xerr=1, color='black',
+             fmt='o', mew=3, ms=3, capsize=1)  # plot the error bars.
+plt.plot(x_bins, expected_MLE, 'g--', lw=1.5, label='MLE Fit', color='blue',)
+plt.xlabel(r'$m_{\gamma\gamma}$ (GeV)', loc='right')
+plt.ylabel("Number of entries")
+plt.legend(['B+S fit', 'B (MLE method)', 'Data points'], loc='upper right',
+           fontsize=12, frameon=False)
+plt.tight_layout()
+plt.show()
+
+# Task 2 end -----------------------------------------------------------------
+
+# %%
+
+# Task 3 start ---------------------------------------------------------------
+
+
+# The function is defined to generate background expectation values
+def get_B_expectation(xs, A, lamb):
+    return A * np.exp(-xs / lamb)
+
+
+# The function is used to generate chi square function
+def get_B_chi(vals, histo_range, n_bins, A, lamb):
+    bin_heights, bin_edges = np.histogram(vals, range=histo_range, bins=n_bins)
+    bin_centres = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+    expected = get_B_expectation(bin_centres, A, lamb)
+
+    errors = np.sqrt(bin_heights)
+    errors[errors == 0] = 1e-6  # in case division by 0 in the functions
+
+    chi2 = np.sum(((bin_heights - expected) ** 2) / errors ** 2)
+    return chi2
+
+
+# Parameters for the histogram
+range_low, range_up = 104, 155
+n_bins = 30
+bin_centres = np.linspace(range_low + (range_up - range_low) / (2 * n_bins),
+                          range_up - (range_up - range_low) / (2 * n_bins),
+                          n_bins)
+
+vals = generate_data()
+
+# Choose scan ranges for A and Lambda
+A_vals = np.linspace(1e3, 1e5, 100)  # Try values from 1000 to 100000
+lamb_vals = np.linspace(20, 40, 100)  # Try values from 20 to 40
+
+chi2_grid = np.zeros((len(A_vals), len(lamb_vals)))
+
+# For each combination, calculate the χ² and store it.
+for i, A in enumerate(A_vals):
+    for j, lamb in enumerate(lamb_vals):
+        chi2 = get_B_chi(vals, (range_low, range_up), n_bins, A, lamb)
+        chi2_grid[i, j] = chi2
+
+# Find where the minimum χ² occurs
+min_index = np.unravel_index(np.argmin(chi2_grid), chi2_grid.shape)
+best_A = A_vals[min_index[0]]
+best_lamb = lamb_vals[min_index[1]]
+min_chi2 = chi2_grid[min_index]
+
+print(f"Best-fit A: {best_A}")
+print(f"Best-fit lambda: {best_lamb}")
+print(f"Minimum chi²: {min_chi2}")
+
+# Plot background fit on histogram
+bin_heights, bin_edges, _ = plt.hist(vals, range=(range_low, range_up),
+                                     bins=n_bins, label='Data', alpha=0.5)
+expected_chi = get_B_expectation(bin_centres, best_A, best_lamb)
+# %%
+
+plt.plot(x_bins, expected_chi, 'g--', lw=1.5, label='Min-χ² Fit',
+         color='red')
+plt.plot(x_bins, expected_MLE, 'g--', lw=1.5, label='MLE Fit', color='blue',)
+plt.plot(x_bins, get_SB_expectation(x_bins, po[0], po[1], po[2], po[3], po[4]),
+         label='Fit results', color='r')
+# plt.errorbar(x, y, yerr=y_error, fmt='o', label="Input Data", capsize=2)
+plt.errorbar(x_bins, y_bins, yerr=np.sqrt(y_bins), xerr=1, color='black',
+             fmt='o', mew=3, ms=3, capsize=1)  # plot the error bars.
+plt.xlabel(r'$m_{\gamma\gamma}$ (GeV)', loc='right')
+plt.ylabel("Number of entries")
+plt.legend(['B (Min-χ² method)', 'B (MLE method)', 'B+S fit', 'Data points'],
+           loc='upper right', fontsize=12, frameon=False)
+plt.tight_layout()
+plt.show()
+# task 3 end -----------------------------------------------------------------
